@@ -1,0 +1,33 @@
+version: "2"
+
+services:
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    links:
+      - rabbitmq
+    depends_on:
+      - rabbitmq
+    command: /go/bin/service-api
+    environment:
+      - RMQ_HOST=rabbitmq
+
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    links:
+      - rabbitmq
+    depends_on:
+      - rabbitmq
+    command: /go/bin/service-worker
+    environment:
+      - RMQ_HOST=rabbitmq
+
+  rabbitmq:
+    image: rabbitmq:alpine
+    hostname: rabbitmq
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
