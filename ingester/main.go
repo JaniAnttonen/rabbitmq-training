@@ -1,12 +1,12 @@
 package main
 
 import (
-	"bytes"
 	"log"
 	"os"
-	"time"
 
 	"github.com/streadway/amqp"
+	"github.com/valyala/fasthttp"
+	"github.com/vincentLiuxiang/lu"
 )
 
 func failOnError(err error, msg string) {
@@ -54,55 +54,29 @@ func main() {
 	// Get the configuration from env variables
 	rmqHost := os.Getenv("RMQ_HOST")
 	jobQueueName := os.Getenv("RMQ_JOB_QUEUE")
-	responseQueueName := os.Getenv("RMQ_RES_QUEUE")
+	apiPort := os.Getenv("API_PORT")
 
 	// Open the connection to RabbitMQ
 	ch, conn := openRmqChannel(rmqHost)
 
-	// Declare the queue to be read from
-	jobQueue := declareQueue(ch, jobQueueName)
-
 	// Declare the queue to be pushed to
-	responseQueue := declareQueue(ch, responseQueueName)
+	q := declareQueue(ch, jobQueueName)
 
 	// Defer the connection's and channel's closing
 	defer conn.Close()
 	defer ch.Close()
 
-	err := ch.Qos(
-		1,     // prefetch count
-		0,     // prefetch size
-		false, // global
-	)
-	failOnError(err, "Failed to set QoS")
+	// Initialize the API
+	api := lu.New()
 
-	msgs, err := ch.Consume(
-		jobQueue.Name, // queue
-		"",            // consumer
-		false,         // auto-ack
-		false,         // exclusive
-		false,         // no-local
-		false,         // no-wait
-		nil,           // args
-	)
-	failOnError(err, "Failed to register a consumer")
+	// Define routes
+	api.Use("/", func(ctx *fasthttp.RequestCtx, next func(error)) {
+		ctx.SetStatusCode(200)
 
-	forever := make(chan bool)
+		// Publish the message to queue
+		publish(ch, q, "Hello world!")
+	})
 
-	go func() {
-		for d := range msgs {
-			log.Printf("Received a message: %s", d.Body)
-			dotCount := bytes.Count(d.Body, []byte("."))
-			t := time.Duration(dotCount)
-			time.Sleep(t * time.Second)
-
-			publish(ch, responseQueue, "This has been donedded")
-
-			log.Printf("Done")
-			d.Ack(false)
-		}
-	}()
-
-	log.Printf(" [*] Waiting for messages. To exit press CTRL+C")
-	<-forever
+	// Listen to connections
+	api.Listen(apiPort)
 }
