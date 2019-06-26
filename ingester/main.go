@@ -25,12 +25,12 @@ func openRmqChannel(rmqHost string) (*amqp.Channel, *amqp.Connection) {
 
 func declareQueue(channel *amqp.Channel, name string) *amqp.Queue {
 	q, err := channel.QueueDeclare(
-		name,  // name
-		false, // durable
-		false, // delete when unused
-		false, // exclusive
-		false, // no-wait
-		nil,   // arguments
+		name,
+		false,
+		false,
+		false,
+		false,
+		nil,
 	)
 	failOnError(err, "Failed to declare a queue")
 	return &q
@@ -38,10 +38,10 @@ func declareQueue(channel *amqp.Channel, name string) *amqp.Queue {
 
 func publish(channel *amqp.Channel, queue *amqp.Queue, job string) {
 	err := channel.Publish(
-		"",         // exchange
-		queue.Name, // routing key
-		false,      // mandatory
-		false,      // immediate
+		"",
+		queue.Name,
+		false,
+		false,
 		amqp.Publishing{
 			ContentType: "text/plain",
 			Body:        []byte(job),

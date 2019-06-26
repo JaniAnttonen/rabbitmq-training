@@ -1,15 +1,15 @@
 version: "2"
 
 services:
-  api:
+  ingester:
     build:
-      context: ./api
+      context: ./ingester
       dockerfile: Dockerfile
     links:
       - rabbitmq
     depends_on:
       - rabbitmq
-    command: /go/bin/service-api
+    command: /go/bin/service-ingester
     environment:
       - RMQ_HOST=rabbitmq
 
@@ -31,3 +31,10 @@ services:
     container_name: rabbitmq
     ports:
       - "5672:5672"
+
+  redis:
+    image: redis:alpine
+    hostname: redis
+    container_name: redis
+    ports:
+      - "6379:6379"

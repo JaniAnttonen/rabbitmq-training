@@ -1,11 +1,11 @@
 package main
 
 import (
-	"bytes"
 	"log"
 	"os"
 	"time"
 
+	"github.com/go-redis/redis"
 	"github.com/streadway/amqp"
 )
 
@@ -25,36 +25,22 @@ func openRmqChannel(rmqHost string) (*amqp.Channel, *amqp.Connection) {
 
 func declareQueue(channel *amqp.Channel, name string) *amqp.Queue {
 	q, err := channel.QueueDeclare(
-		name,  // name
-		false, // durable
-		false, // delete when unused
-		false, // exclusive
-		false, // no-wait
-		nil,   // arguments
+		name,
+		false,
+		false,
+		false,
+		false,
+		nil,
 	)
 	failOnError(err, "Failed to declare a queue")
 	return &q
-}
-
-func publish(channel *amqp.Channel, queue *amqp.Queue, job string) {
-	err := channel.Publish(
-		"",         // exchange
-		queue.Name, // routing key
-		false,      // mandatory
-		false,      // immediate
-		amqp.Publishing{
-			ContentType: "text/plain",
-			Body:        []byte(job),
-		})
-	log.Printf(" [x] Sent %s", job)
-	failOnError(err, "Failed to publish a message")
 }
 
 func main() {
 	// Get the configuration from env variables
 	rmqHost := os.Getenv("RMQ_HOST")
 	jobQueueName := os.Getenv("RMQ_JOB_QUEUE")
-	responseQueueName := os.Getenv("RMQ_RES_QUEUE")
+	redisHost := os.Getenv("REDIS_HOST")
 
 	// Open the connection to RabbitMQ
 	ch, conn := openRmqChannel(rmqHost)
@@ -62,28 +48,32 @@ func main() {
 	// Declare the queue to be read from
 	jobQueue := declareQueue(ch, jobQueueName)
 
-	// Declare the queue to be pushed to
-	responseQueue := declareQueue(ch, responseQueueName)
-
 	// Defer the connection's and channel's closing
 	defer conn.Close()
 	defer ch.Close()
 
+	// Open Redis connection
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     redisHost,
+		Password: "",
+		DB:       0,
+	})
+
 	err := ch.Qos(
-		1,     // prefetch count
-		0,     // prefetch size
-		false, // global
+		1,
+		0,
+		false,
 	)
 	failOnError(err, "Failed to set QoS")
 
 	msgs, err := ch.Consume(
-		jobQueue.Name, // queue
-		"",            // consumer
-		false,         // auto-ack
-		false,         // exclusive
-		false,         // no-local
-		false,         // no-wait
-		nil,           // args
+		jobQueue.Name,
+		"",
+		false,
+		false,
+		false,
+		false,
+		nil,
 	)
 	failOnError(err, "Failed to register a consumer")
 
@@ -92,11 +82,11 @@ func main() {
 	go func() {
 		for d := range msgs {
 			log.Printf("Received a message: %s", d.Body)
-			dotCount := bytes.Count(d.Body, []byte("."))
-			t := time.Duration(dotCount)
-			time.Sleep(t * time.Second)
 
-			publish(ch, responseQueue, "This has been donedded")
+			t := float64(time.Now().UTC().UnixNano())
+			response := &redis.Z{Score: t, Member: "This is a response"}
+
+			redisClient.ZAdd("responses", response)
 
 			log.Printf("Done")
 			d.Ack(false)
